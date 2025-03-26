@@ -3,27 +3,31 @@ from matplotlib.patches import Rectangle
 import numpy as np
 
 
-COLORS = ['#1f77b4',
-        '#ff7f0e',
-        '#2ca02c',
-        '#d62728',
-        '#9467bd',
-        '#8c564b',
-        '#e377c2',
-        '#7f7f7f',
-        '#bcbd22',
-        '#17becf',
-        '#aec7e8',
-        '#ffbb78',
-        '#98df8a',
-        '#ff9896',]
+COLORS = [
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+    "#aec7e8",
+    "#ffbb78",
+    "#98df8a",
+    "#ff9896",
+]
 
 
 def plot_data_points(data, ax, preferential_speed):
 
     opt_velocity, opt = {}, {}
     for i_subject, subject in enumerate(data.keys()):
-        speed_list = [preferential_speed[subject] if key == "preferential_speed" else float(key) for key in data[subject].keys()]
+        speed_list = [
+            preferential_speed[subject] if key == "preferential_speed" else float(key) for key in data[subject].keys()
+        ]
         sorded_velocities_idx = np.argsort(speed_list)
         sorted_keys = np.array(list(data[subject].keys()))[sorded_velocities_idx]
         sorted_velocities = np.array(speed_list)[sorded_velocities_idx]
@@ -32,8 +36,8 @@ def plot_data_points(data, ax, preferential_speed):
 
         # Quadratic fit
         p = np.polyfit(sorted_velocities, array, 2)
-        opt_velocity[subject] = -p[1]/(2*p[0])
-        opt[subject] = p[0]*(opt_velocity[subject])**2 + p[1]*opt_velocity[subject] + p[2]
+        opt_velocity[subject] = -p[1] / (2 * p[0])
+        opt[subject] = p[0] * (opt_velocity[subject]) ** 2 + p[1] * opt_velocity[subject] + p[2]
         ax.vlines(opt_velocity[subject], 0, 200, linestyles="-", color=COLORS[i_subject])
     ax.set_xlim(0.4, 1.6)
     ax.axes.get_xaxis().set_visible(False)
@@ -43,12 +47,12 @@ def plot_data_points(data, ax, preferential_speed):
 def plot_velocity_difference(data_opt, preferential_speed, ax):
     for i_subject, subject in enumerate(data_opt.keys()):
         diff = preferential_speed[subject] - data_opt[subject]
-        rect = Rectangle((0, -0.1*i_subject), diff, -0.1, facecolor=COLORS[i_subject])
+        rect = Rectangle((0, -0.1 * i_subject), diff, -0.1, facecolor=COLORS[i_subject])
         ax.add_patch(rect)
     ax.vlines(0, 0.1, -1.5, linestyles="-", color="black")
     ax.axes.get_xaxis().set_visible(False)
     ax.axes.get_yaxis().set_visible(False)
-    for side in ['top', 'right', 'bottom', 'left']:
+    for side in ["top", "right", "bottom", "left"]:
         ax.spines[side].set_visible(False)
     ax.set_xlim(-0.5, 0.5)
 
@@ -59,27 +63,27 @@ def plot_preferential_speed(preferential_speed, ax):
         nb = 0
         if preferential_speed[subject] in preferential_speed_plotted:
             nb = preferential_speed_plotted.count(preferential_speed[subject])
-        ax.vlines(preferential_speed[subject], 0 + 1.8*nb, 1.5 + 1.8*nb, linestyles="-", color=COLORS[i_subject])
-        ax.plot(preferential_speed[subject], 0.25 + 1.8*nb, "v", color=COLORS[i_subject])
+        ax.vlines(preferential_speed[subject], 0 + 1.8 * nb, 1.5 + 1.8 * nb, linestyles="-", color=COLORS[i_subject])
+        ax.plot(preferential_speed[subject], 0.25 + 1.8 * nb, "v", color=COLORS[i_subject])
         preferential_speed_plotted += [preferential_speed[subject]]
     ax.set_ylabel("Preferential speed")
     ax.set_ylim(0, 10)
     ax.set_xlim(0.4, 1.6)
     ax.axes.get_xaxis().set_visible(False)
     ax.axes.get_yaxis().set_visible(False)
-    for side in ['top', 'right', 'bottom', 'left']:
+    for side in ["top", "right", "bottom", "left"]:
         ax.spines[side].set_visible(False)
 
 
 def plot_energenic_data(cw, cw_opt_velocity, mean_emg, preferential_speed):
 
-    fig, axs = plt.subplots(3, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=(10, 7))
+    fig, axs = plt.subplots(3, 2, gridspec_kw={"width_ratios": [3, 1]}, figsize=(10, 7))
 
     # Preferential speed arrows
     plot_preferential_speed(preferential_speed, axs[0, 0])
     axs[0, 1].axes.get_xaxis().set_visible(False)
     axs[0, 1].axes.get_yaxis().set_visible(False)
-    for side in ['top', 'right', 'bottom', 'left']:
+    for side in ["top", "right", "bottom", "left"]:
         axs[0, 1].spines[side].set_visible(False)
 
     # K5 energy consumption
@@ -108,7 +112,7 @@ def plot_energenic_data(cw, cw_opt_velocity, mean_emg, preferential_speed):
 
 def plot_variability(lyapunov_exponent, std_angles, preferential_speed):
 
-    fig, axs = plt.subplots(2, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=(10, 7))
+    fig, axs = plt.subplots(2, 2, gridspec_kw={"width_ratios": [3, 1]}, figsize=(10, 7))
 
     # STD kinematics
     std_opt_velocity, std_opt = plot_data_points(std_angles, axs[0, 0], preferential_speed)
@@ -126,10 +130,10 @@ def plot_variability(lyapunov_exponent, std_angles, preferential_speed):
     fig.savefig("variability_data.png")
     plt.show()
 
+
 def plot_stability(h_5_to_59_percentile, mean_com_acceleration, preferential_speed):
 
-
-    fig, axs = plt.subplots(2, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=(10, 7))
+    fig, axs = plt.subplots(2, 2, gridspec_kw={"width_ratios": [3, 1]}, figsize=(10, 7))
 
     # CoM acceleration
     com_opt_velocity, com_opt = plot_data_points(mean_com_acceleration, axs[0, 0], preferential_speed)
@@ -166,24 +170,3 @@ def plot_data(data):
     plot_variability(lyapunov_exponent, std_angles, preferential_speed)
 
     plot_stability(h_5_to_59_percentile, mean_com_acceleration, preferential_speed)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

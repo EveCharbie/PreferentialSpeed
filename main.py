@@ -8,22 +8,3 @@ data_path = "/Volumes/Eve_Mac/Eve_data"
 data = get_data(data_path)
 
 plot_data(data)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

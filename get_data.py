@@ -19,19 +19,21 @@ def get_energetic_data(data_path):
     cw_opt = {}
     preferential_speed = {}
     for subject_name in data["Sujet"].unique():
-        this_cw = np.array([
-            data.loc[data["Sujet"] == subject_name, "Cw_0,5"].values[0],
-            data.loc[data["Sujet"] == subject_name, "Cw_0,75"].values[0],
-            data.loc[data["Sujet"] == subject_name, "Cw_1"].values[0],
-            data.loc[data["Sujet"] == subject_name, "Cw_1,25"].values[0],
-            data.loc[data["Sujet"] == subject_name, "Cw_1,5"].values[0],
-                  ])
+        this_cw = np.array(
+            [
+                data.loc[data["Sujet"] == subject_name, "Cw_0,5"].values[0],
+                data.loc[data["Sujet"] == subject_name, "Cw_0,75"].values[0],
+                data.loc[data["Sujet"] == subject_name, "Cw_1"].values[0],
+                data.loc[data["Sujet"] == subject_name, "Cw_1,25"].values[0],
+                data.loc[data["Sujet"] == subject_name, "Cw_1,5"].values[0],
+            ]
+        )
         cw[subject_name] = this_cw
         cw_opt_velocity[subject_name] = data.loc[data["Sujet"] == subject_name, "Vit_Cw_bas_P0"].values[0]
         cw_opt[subject_name] = data.loc[data["Sujet"] == subject_name, "Cw_bas_P0"].values[0]
         preferential_speed[subject_name] = data.loc[data["Sujet"] == subject_name, "Vit_pref"].values[0]
 
-    return cw, cw_opt_velocity,cw_opt, preferential_speed
+    return cw, cw_opt_velocity, cw_opt, preferential_speed
 
 
 def get_conditions(data_path, preferential_speed):
@@ -44,14 +46,17 @@ def get_conditions(data_path, preferential_speed):
             continue
         condition_filepath = f"{path}/{sub_folder}/{sub_folder}_Cond.mat"
         condition_file = sio.loadmat(condition_filepath)["combinations"]
-        conditions[f"Sujet_{subject_number}"] = {"0.50": np.nan,
-                                                    "0.75": np.nan,
-                                                    "1.00": np.nan,
-                                                    "1.25": np.nan,
-                                                    "1.50": np.nan,
-                                                    "preferential_speed": np.nan}
+        conditions[f"Sujet_{subject_number}"] = {
+            "0.50": np.nan,
+            "0.75": np.nan,
+            "1.00": np.nan,
+            "1.25": np.nan,
+            "1.50": np.nan,
+            "preferential_speed": np.nan,
+        }
         pref_velocity_idx = np.where(
-            np.abs(preferential_speed[f"Sujet_{subject_number}"] - np.array([0.5, 0.75, 1.0, 1.25, 1.5])) < 0.02)
+            np.abs(preferential_speed[f"Sujet_{subject_number}"] - np.array([0.5, 0.75, 1.0, 1.25, 1.5])) < 0.02
+        )
         for i in range(condition_file.shape[0]):
             # Keep only the 0 slope conditions
             if condition_file[i, 0] == 0.0:
@@ -85,45 +90,64 @@ def identify_cycles(entry_names, points, path, sub_folder, subject_number, condi
     left_heel_height_when_force2_is_active = np.nanmean(points[2, index_left_heel, idx2_contact])
 
     # Identify the right leg
-    if (right_heel_height_when_force1_is_active < left_heel_height_when_force1_is_active and
-            right_heel_height_when_force2_is_active > left_heel_height_when_force2_is_active):
+    if (
+        right_heel_height_when_force1_is_active < left_heel_height_when_force1_is_active
+        and right_heel_height_when_force2_is_active > left_heel_height_when_force2_is_active
+    ):
         cycle_start = cycle_start1[0]
-    elif (right_heel_height_when_force1_is_active > left_heel_height_when_force1_is_active and
-          right_heel_height_when_force2_is_active < left_heel_height_when_force2_is_active):
+    elif (
+        right_heel_height_when_force1_is_active > left_heel_height_when_force1_is_active
+        and right_heel_height_when_force2_is_active < left_heel_height_when_force2_is_active
+    ):
         cycle_start = cycle_start2[0]
     else:
         fig, axs = plt.subplots(2, 1)
 
-        axs[0].plot(points[2, force1_index, :], '.r', label="force1")
-        axs[0].plot(np.arange(nb_frames)[idx1_contact], points[2, force1_index, idx1_contact], '.k')
-        axs[0].plot(np.arange(nb_frames)[cycle_start1], points[2, force1_index, cycle_start1].reshape(-1, ), 'om')
-        axs[0].plot(points[2, index_right_heel, :], '.b', label="RCAL")
-        axs[0].plot(points[2, index_left_heel, :], '.g', label="LCAL")
+        axs[0].plot(points[2, force1_index, :], ".r", label="force1")
+        axs[0].plot(np.arange(nb_frames)[idx1_contact], points[2, force1_index, idx1_contact], ".k")
+        axs[0].plot(
+            np.arange(nb_frames)[cycle_start1],
+            points[2, force1_index, cycle_start1].reshape(
+                -1,
+            ),
+            "om",
+        )
+        axs[0].plot(points[2, index_right_heel, :], ".b", label="RCAL")
+        axs[0].plot(points[2, index_left_heel, :], ".g", label="LCAL")
         axs[0].set_xlim(0, 1000)
 
-        axs[1].plot(points[2, force2_index, :], '.r', label="force2")
-        axs[1].plot(np.arange(nb_frames)[idx2_contact], points[2, force2_index, idx2_contact], '.k')
-        axs[1].plot(np.arange(nb_frames)[cycle_start2], points[2, force2_index, cycle_start2].reshape(-1, ), 'om')
-        axs[1].plot(points[2, index_right_heel, :], '.b', label="RCAL")
-        axs[1].plot(points[2, index_left_heel, :], '.g', label="LCAL")
+        axs[1].plot(points[2, force2_index, :], ".r", label="force2")
+        axs[1].plot(np.arange(nb_frames)[idx2_contact], points[2, force2_index, idx2_contact], ".k")
+        axs[1].plot(
+            np.arange(nb_frames)[cycle_start2],
+            points[2, force2_index, cycle_start2].reshape(
+                -1,
+            ),
+            "om",
+        )
+        axs[1].plot(points[2, index_right_heel, :], ".b", label="RCAL")
+        axs[1].plot(points[2, index_left_heel, :], ".g", label="LCAL")
         axs[1].set_xlim(0, 1000)
 
         plt.savefig(
-            f"{path}/{sub_folder}/c3d/{sub_folder}_{conditions[f'Sujet_{subject_number}'][velocity]}_processed6_H_h_5_to_59_percentile.png")
+            f"{path}/{sub_folder}/c3d/{sub_folder}_{conditions[f'Sujet_{subject_number}'][velocity]}_processed6_H_h_5_to_59_percentile.png"
+        )
         plt.show()
         raise RuntimeError("I could not identify which force corresponds to which foot. Please see the graph.")
 
     return cycle_start
+
 
 def compute_lyapunov(x):
     """
     This implementation of the Lyapunov exponent was generated with ChatGPT.
     It should be verified.
     """
+
     def time_delay_embedding(x, m, tau):
         """Create time-delay embedding of a 1D signal."""
         N = len(x) - (m - 1) * tau
-        return np.array([x[i:i + m * tau:tau] for i in range(N)])
+        return np.array([x[i : i + m * tau : tau] for i in range(N)])
 
     def average_mutual_information(x, max_lag=100, n_bins=64):
         """
@@ -276,7 +300,7 @@ def compute_lyapunov(x):
 
         if plot:
             plt.plot(t, y, label="Mean log divergence")
-            plt.plot(t[fit_range], np.polyval(coef, t[fit_range]), 'r--', label=f"Fit: {lyap_exp:.3f} 1/s")
+            plt.plot(t[fit_range], np.polyval(coef, t[fit_range]), "r--", label=f"Fit: {lyap_exp:.3f} 1/s")
             plt.xlabel("Time [s]")
             plt.ylabel("log divergence")
             plt.title("Rosenstein Lyapunov Exponent")
@@ -310,11 +334,11 @@ def get_c3d_data(data_path, conditions):
     for sub_folder in os.listdir(path):
         try:
             subject_number = f"{int(sub_folder[-2:]):02d}"
-            lyapunov_exponent[f'Sujet_{subject_number}'] = {}
-            std_angles[f'Sujet_{subject_number}'] = {}
-            h_5_to_59_percentile[f'Sujet_{subject_number}'] = {}
-            mean_com_acceleration[f'Sujet_{subject_number}'] = {}
-            mean_emg[f'Sujet_{subject_number}'] = {}
+            lyapunov_exponent[f"Sujet_{subject_number}"] = {}
+            std_angles[f"Sujet_{subject_number}"] = {}
+            h_5_to_59_percentile[f"Sujet_{subject_number}"] = {}
+            mean_com_acceleration[f"Sujet_{subject_number}"] = {}
+            mean_emg[f"Sujet_{subject_number}"] = {}
         except:
             continue
         for velocity in ["0.75", "1.00", "1.25", "preferential_speed"]:
@@ -324,13 +348,15 @@ def get_c3d_data(data_path, conditions):
                 continue
             c3d = ezc3d.c3d(filepath)
             frame_rate = c3d["header"]["points"]["frame_rate"]
-            dt = 1/frame_rate
-            entry_names = c3d["parameters"]["POINT"]["LABELS"]['value']
-            analog_names = c3d["parameters"]["ANALOG"]["LABELS"]['value']
+            dt = 1 / frame_rate
+            entry_names = c3d["parameters"]["POINT"]["LABELS"]["value"]
+            analog_names = c3d["parameters"]["ANALOG"]["LABELS"]["value"]
             points = c3d["data"]["points"]
             nb_frames = points.shape[2]
-            cycle_start = identify_cycles(entry_names, points, path, sub_folder, subject_number, conditions, nb_frames, velocity)
-            nb_cycles = cycle_start.shape[0]-1
+            cycle_start = identify_cycles(
+                entry_names, points, path, sub_folder, subject_number, conditions, nb_frames, velocity
+            )
+            nb_cycles = cycle_start.shape[0] - 1
 
             # --- Angular momentum --- #
             print(f"Computing Angular momentum of Sujet_{subject_number}")
@@ -338,7 +364,7 @@ def get_c3d_data(data_path, conditions):
             H_norm = np.linalg.norm(points[:3, H_index, :], axis=0)
             percentile_5 = np.percentile(H_norm, 5)
             percentile_95 = np.percentile(H_norm, 95)
-            h_5_to_59_percentile[f'Sujet_{subject_number}'][velocity] = percentile_95 - percentile_5
+            h_5_to_59_percentile[f"Sujet_{subject_number}"][velocity] = percentile_95 - percentile_5
 
             # plt.figure()
             # plt.plot(H_norm)
@@ -352,29 +378,32 @@ def get_c3d_data(data_path, conditions):
             # --- Mean CoM acceleration --- #
             print(f"Computing CoMddot of Sujet_{subject_number}")
             com_index = entry_names.index("CentreOfMass")
-            com  = points[:3, com_index, :]
+            com = points[:3, com_index, :]
             com_acceleration = np.diff(np.diff(com, axis=1), axis=1) / dt**2
             norm_acceleration = np.linalg.norm(com_acceleration, axis=0)
-            mean_com_acceleration[f'Sujet_{subject_number}'][velocity] = np.mean(norm_acceleration)
+            mean_com_acceleration[f"Sujet_{subject_number}"][velocity] = np.mean(norm_acceleration)
 
             # --- Angles RMSD --- #
             print(f"Computing STD of Sujet_{subject_number}")
-            angles_index = [entry_names.index(name) for name in ["LHipAngles", "LKneeAngles", "LAnkleAngles", "RHipAngles", "RKneeAngles", "RAnkleAngles"]]
+            angles_index = [
+                entry_names.index(name)
+                for name in ["LHipAngles", "LKneeAngles", "LAnkleAngles", "RHipAngles", "RKneeAngles", "RAnkleAngles"]
+            ]
             nb_frames_interp = 100
             angles = np.zeros((18, nb_cycles, nb_frames_interp))
             x_to_interpolate_on = np.linspace(0, 1, num=nb_frames_interp)
             for i_cycle in range(nb_cycles):
-                nb_frames = points[:3, 0, cycle_start[i_cycle]: cycle_start[i_cycle+1]].shape[1]
+                nb_frames = points[:3, 0, cycle_start[i_cycle] : cycle_start[i_cycle + 1]].shape[1]
                 for i_angle, angle in enumerate(angles_index):
                     for i_dim in range(3):
-                        this_cycle = points[i_dim, angle, cycle_start[i_cycle]: cycle_start[i_cycle+1]]
+                        this_cycle = points[i_dim, angle, cycle_start[i_cycle] : cycle_start[i_cycle + 1]]
                         x_data = np.linspace(0, 1, num=nb_frames)
                         y_data = this_cycle[~np.isnan(this_cycle)]
                         x_data = x_data[~np.isnan(this_cycle)]
                         interpolation_object = CubicSpline(x_data, y_data)
-                        angles[i_angle*3+i_dim, i_cycle, :] = interpolation_object(x_to_interpolate_on)
+                        angles[i_angle * 3 + i_dim, i_cycle, :] = interpolation_object(x_to_interpolate_on)
             std = np.std(angles, axis=1)
-            std_angles[f'Sujet_{subject_number}'][velocity] = np.sum(np.mean(std, axis=1))
+            std_angles[f"Sujet_{subject_number}"][velocity] = np.sum(np.mean(std, axis=1))
 
             # --- EMG - Energy --- #
             print(f"Computing EMG of Sujet_{subject_number}")
@@ -382,7 +411,7 @@ def get_c3d_data(data_path, conditions):
             if len(emg_index) != 7:
                 print("icic")
             emg = c3d["data"]["analogs"][0, emg_index, :]
-            mean_emg[f'Sujet_{subject_number}'][velocity] = np.sum(np.nanmean(np.abs(emg), axis=1))
+            mean_emg[f"Sujet_{subject_number}"][velocity] = np.sum(np.nanmean(np.abs(emg), axis=1))
 
             # --- Angles Lyapunov --- #
             print(f"Computing Lyapunov of Sujet_{subject_number}")
@@ -390,7 +419,7 @@ def get_c3d_data(data_path, conditions):
             for i_angle, angle in enumerate(angles_index):
                 for i_dim in range(3):
                     lyap += [compute_lyapunov(points[i_dim, angle, :])]
-            lyapunov_exponent[f'Sujet_{subject_number}'][velocity] = np.sum(np.array(lyap))
+            lyapunov_exponent[f"Sujet_{subject_number}"][velocity] = np.sum(np.array(lyap))
 
     return lyapunov_exponent, std_angles, h_5_to_59_percentile, mean_com_acceleration, mean_emg
 
@@ -400,7 +429,9 @@ def get_data(data_path):
     cw, cw_opt_velocity, cw_opt, preferential_speed = get_energetic_data(data_path)
 
     conditions = get_conditions(data_path, preferential_speed)
-    lyapunov_exponent, std_angles, h_5_to_59_percentile, mean_com_acceleration, mean_emg = get_c3d_data(data_path, conditions)
+    lyapunov_exponent, std_angles, h_5_to_59_percentile, mean_com_acceleration, mean_emg = get_c3d_data(
+        data_path, conditions
+    )
 
     data = {
         "cw": cw,
@@ -415,23 +446,3 @@ def get_data(data_path):
     }
 
     return data
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
