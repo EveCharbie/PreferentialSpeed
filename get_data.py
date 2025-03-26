@@ -5,6 +5,9 @@ import pandas as pd
 import ezc3d
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
+from scipy.spatial import cKDTree
+from sklearn.metrics import mutual_info_score
+
 
 def get_energetic_data(data_path):
 
@@ -12,6 +15,7 @@ def get_energetic_data(data_path):
     data = pd.read_excel(filepath)
 
     cw = {}
+    cw_opt_velocity = {}
     cw_opt = {}
     preferential_speed = {}
     for subject_name in data["Sujet"].unique():
@@ -23,13 +27,11 @@ def get_energetic_data(data_path):
             data.loc[data["Sujet"] == subject_name, "Cw_1,5"].values[0],
                   ])
         cw[subject_name] = this_cw
-        cw_opt[subject_name] = np.array([
-            data.loc[data["Sujet"] == subject_name, "Vit_Cw_bas_P0"].values[0],
-            data.loc[data["Sujet"] == subject_name, "Cw_bas_P0"].values[0]
-        ])
+        cw_opt_velocity[subject_name] = data.loc[data["Sujet"] == subject_name, "Vit_Cw_bas_P0"].values[0]
+        cw_opt[subject_name] = data.loc[data["Sujet"] == subject_name, "Cw_bas_P0"].values[0]
         preferential_speed[subject_name] = data.loc[data["Sujet"] == subject_name, "Vit_pref"].values[0]
 
-    return cw, cw_opt, preferential_speed
+    return cw, cw_opt_velocity,cw_opt, preferential_speed
 
 
 def get_conditions(data_path, preferential_speed):
@@ -77,10 +79,10 @@ def identify_cycles(entry_names, points, path, sub_folder, subject_number, condi
 
     index_right_heel = entry_names.index("RCAL")
     index_left_heel = entry_names.index("LCAL")
-    right_heel_height_when_force1_is_active = np.mean(points[2, index_right_heel, idx1_contact])
-    left_heel_height_when_force1_is_active = np.mean(points[2, index_left_heel, idx1_contact])
-    right_heel_height_when_force2_is_active = np.mean(points[2, index_right_heel, idx2_contact])
-    left_heel_height_when_force2_is_active = np.mean(points[2, index_left_heel, idx2_contact])
+    right_heel_height_when_force1_is_active = np.nanmean(points[2, index_right_heel, idx1_contact])
+    left_heel_height_when_force1_is_active = np.nanmean(points[2, index_left_heel, idx1_contact])
+    right_heel_height_when_force2_is_active = np.nanmean(points[2, index_right_heel, idx2_contact])
+    left_heel_height_when_force2_is_active = np.nanmean(points[2, index_left_heel, idx2_contact])
 
     # Identify the right leg
     if (right_heel_height_when_force1_is_active < left_heel_height_when_force1_is_active and
@@ -90,10 +92,6 @@ def identify_cycles(entry_names, points, path, sub_folder, subject_number, condi
           right_heel_height_when_force2_is_active < left_heel_height_when_force2_is_active):
         cycle_start = cycle_start2[0]
     else:
-        raise RuntimeError("I could not identify which force corresponds to which foot.")
-
-    plot_flag = False
-    if plot_flag:
         fig, axs = plt.subplots(2, 1)
 
         axs[0].plot(points[2, force1_index, :], '.r', label="force1")
@@ -101,25 +99,213 @@ def identify_cycles(entry_names, points, path, sub_folder, subject_number, condi
         axs[0].plot(np.arange(nb_frames)[cycle_start1], points[2, force1_index, cycle_start1].reshape(-1, ), 'om')
         axs[0].plot(points[2, index_right_heel, :], '.b', label="RCAL")
         axs[0].plot(points[2, index_left_heel, :], '.g', label="LCAL")
+        axs[0].set_xlim(0, 1000)
 
         axs[1].plot(points[2, force2_index, :], '.r', label="force2")
         axs[1].plot(np.arange(nb_frames)[idx2_contact], points[2, force2_index, idx2_contact], '.k')
         axs[1].plot(np.arange(nb_frames)[cycle_start2], points[2, force2_index, cycle_start2].reshape(-1, ), 'om')
         axs[1].plot(points[2, index_right_heel, :], '.b', label="RCAL")
         axs[1].plot(points[2, index_left_heel, :], '.g', label="LCAL")
+        axs[1].set_xlim(0, 1000)
 
         plt.savefig(
             f"{path}/{sub_folder}/c3d/{sub_folder}_{conditions[f'Sujet_{subject_number}'][velocity]}_processed6_H_h_5_to_59_percentile.png")
-        plt.close()
+        plt.show()
+        raise RuntimeError("I could not identify which force corresponds to which foot. Please see the graph.")
 
     return cycle_start
 
+def compute_lyapunov(x):
+    """
+    This implementation of the Lyapunov exponent was generated with ChatGPT.
+    It should be verified.
+    """
+    def time_delay_embedding(x, m, tau):
+        """Create time-delay embedding of a 1D signal."""
+        N = len(x) - (m - 1) * tau
+        return np.array([x[i:i + m * tau:tau] for i in range(N)])
 
-def get_variability_data(data_path, conditions):
+    def average_mutual_information(x, max_lag=100, n_bins=64):
+        """
+        Compute average mutual information (AMI) for lags up to max_lag.
+
+        Parameters:
+        ----------
+        x : 1D array
+            Time series.
+        max_lag : int
+            Maximum lag to consider.
+        n_bins : int
+            Number of bins for histogram-based estimation.
+
+        Returns:
+        -------
+        ami : array of float
+            AMI values for lags from 1 to max_lag.
+        """
+        ami = []
+        x = np.asarray(x)
+        x_binned = np.digitize(x, bins=np.histogram_bin_edges(x, bins=n_bins))
+
+        for lag in range(1, max_lag + 1):
+            x1 = x_binned[:-lag]
+            x2 = x_binned[lag:]
+            mi = mutual_info_score(x1, x2)
+            ami.append(mi)
+        return np.array(ami)
+
+    def false_nearest_neighbors(x, max_dim=10, tau=1, rtol=10, atol=2):
+        """
+        Estimate the fraction of false nearest neighbors for increasing embedding dimensions.
+
+        Parameters:
+        ----------
+        x : array-like
+            1D time series.
+        max_dim : int
+            Maximum embedding dimension to try.
+        tau : int
+            Time delay.
+        rtol : float
+            Relative distance threshold (usually 10).
+        atol : float
+            Absolute distance threshold (usually 2).
+
+        Returns:
+        -------
+        fnn_frac : list of float
+            Fraction of false nearest neighbors for each embedding dimension from 1 to max_dim.
+        """
+        fnn_frac = []
+        N = len(x)
+
+        for m in range(1, max_dim + 1):
+            X_m = time_delay_embedding(x, m, tau)
+            X_m1 = time_delay_embedding(x, m + 1, tau)
+
+            tree = cKDTree(X_m)
+            distances, indices = tree.query(X_m, k=2)
+            false_neighbors = 0
+            total = len(X_m1)
+
+            for i in range(total):
+                j = indices[i][1]  # nearest neighbor index
+                if i >= len(X_m1) or j >= len(X_m1):
+                    continue
+                d_m = distances[i][1]
+                delta = np.abs(X_m1[i, -1] - X_m1[j, -1])  # extra dimension difference
+                ratio = delta / d_m if d_m > 0 else np.inf
+
+                if ratio > rtol or delta > atol:
+                    false_neighbors += 1
+
+            fnn_frac.append(false_neighbors / total)
+
+        return fnn_frac
+
+    def rosenstein_lyapunov(x, m=6, tau=1, max_t=50, min_dist=10, fs=1.0, plot=False):
+        """
+        Estimate the largest Lyapunov exponent using Rosenstein's algorithm.
+
+        Parameters:
+        ----------
+        x : array-like
+            1D time series.
+        m : int
+            Embedding dimension.
+        tau : int
+            Time delay.
+        max_t : int
+            Maximum number of time steps to track divergence.
+        min_dist : int
+            Minimum time separation between original and neighbor (to avoid autocorrelation).
+        fs : float
+            Sampling frequency (for exponent in 1/s).
+        plot : bool
+            Whether to plot the average divergence vs time.
+
+        Returns:
+        -------
+        lyap_exp : float
+            Estimated largest Lyapunov exponent.
+        divergence : ndarray
+            Mean log divergence over time.
+        """
+        X = time_delay_embedding(x, m, tau)
+        N = len(X)
+
+        tree = cKDTree(X)
+        neighbors = np.zeros(N, dtype=int)
+
+        # Find nearest neighbors with temporal constraint
+        for i in range(N):
+            d, idx = tree.query(X[i], k=2)
+            if abs(idx[1] - i) > min_dist:
+                neighbors[i] = idx[1]
+            else:
+                # search manually if closest is too close in time
+                distances, indices = tree.query(X[i], k=N)
+                for j in indices[1:]:
+                    if abs(j - i) > min_dist:
+                        neighbors[i] = j
+                        break
+
+        divergence = np.zeros(max_t)
+        counts = np.zeros(max_t)
+
+        for i in range(N - max_t):
+            j = neighbors[i]
+            for k in range(max_t):
+                if i + k < N and j + k < N:
+                    d = np.linalg.norm(X[i + k] - X[j + k])
+                    if d > 0:
+                        divergence[k] += np.log(d)
+                        counts[k] += 1
+
+        valid = counts > 0
+        divergence[valid] /= counts[valid]
+
+        # Fit line to linear region (early part)
+        t = np.arange(max_t)[valid] / fs
+        y = divergence[valid]
+
+        # Use a simple linear fit over a heuristic range
+        fit_range = slice(1, min(20, len(t)))
+        coef = np.polyfit(t[fit_range], y[fit_range], 1)
+        lyap_exp = coef[0]
+
+        if plot:
+            plt.plot(t, y, label="Mean log divergence")
+            plt.plot(t[fit_range], np.polyval(coef, t[fit_range]), 'r--', label=f"Fit: {lyap_exp:.3f} 1/s")
+            plt.xlabel("Time [s]")
+            plt.ylabel("log divergence")
+            plt.title("Rosenstein Lyapunov Exponent")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
+
+        return lyap_exp, divergence
+
+    # Values taken from https://www.sciencedirect.com/science/article/pii/S0966636217310457?casa_token=js00fb9gYPIAAAAA:3MPA7XkQXBc4oLo3gNFb8ep_295GY8wd77fUJpkCCETm96ChokowA3BlBmYWWBd-MQD03PcSqA
+    # Find the time delay
+    # tau = average_mutual_information(x, max_lag=100, n_bins=64).argmax() + 1
+    tau = 10
+
+    # Perform the FNN analysis to find the optimal embedding dimension
+    # fnn = false_nearest_neighbors(x, max_dim=18, tau=tau)
+    # m = np.argmin(fnn)+1
+    m = 5
+
+    lyap, curve = rosenstein_lyapunov(x, m=m, tau=tau, max_t=50, min_dist=50, fs=100, plot=False)
+    return lyap
+
+
+def get_c3d_data(data_path, conditions):
     lyapunov_exponent = {}
     std_angles = {}
     h_5_to_59_percentile = {}
     mean_com_acceleration = {}
+    mean_emg = {}
     path = data_path + "/Kinematic"
     for sub_folder in os.listdir(path):
         try:
@@ -128,6 +314,7 @@ def get_variability_data(data_path, conditions):
             std_angles[f'Sujet_{subject_number}'] = {}
             h_5_to_59_percentile[f'Sujet_{subject_number}'] = {}
             mean_com_acceleration[f'Sujet_{subject_number}'] = {}
+            mean_emg[f'Sujet_{subject_number}'] = {}
         except:
             continue
         for velocity in ["0.75", "1.00", "1.25", "preferential_speed"]:
@@ -139,38 +326,40 @@ def get_variability_data(data_path, conditions):
             frame_rate = c3d["header"]["points"]["frame_rate"]
             dt = 1/frame_rate
             entry_names = c3d["parameters"]["POINT"]["LABELS"]['value']
+            analog_names = c3d["parameters"]["ANALOG"]["LABELS"]['value']
             points = c3d["data"]["points"]
             nb_frames = points.shape[2]
             cycle_start = identify_cycles(entry_names, points, path, sub_folder, subject_number, conditions, nb_frames, velocity)
             nb_cycles = cycle_start.shape[0]-1
 
             # --- Angular momentum --- #
+            print(f"Computing Angular momentum of Sujet_{subject_number}")
             H_index = entry_names.index("H")
             H_norm = np.linalg.norm(points[:3, H_index, :], axis=0)
             percentile_5 = np.percentile(H_norm, 5)
             percentile_95 = np.percentile(H_norm, 95)
             h_5_to_59_percentile[f'Sujet_{subject_number}'][velocity] = percentile_95 - percentile_5
 
-            plt.figure()
-            plt.plot(H_norm)
-            plt.plot(np.arange(nb_frames),
-                     np.ones((nb_frames, )) * percentile_5)
-            plt.plot(np.arange(nb_frames),
-                     np.ones((nb_frames, )) * percentile_95)
-            plt.savefig(f"{path}/{sub_folder}/c3d/{sub_folder}_{conditions[f'Sujet_{subject_number}'][velocity]}_processed6_H_h_5_to_59_percentile.png")
-            plt.close()
+            # plt.figure()
+            # plt.plot(H_norm)
+            # plt.plot(np.arange(nb_frames),
+            #          np.ones((nb_frames, )) * percentile_5)
+            # plt.plot(np.arange(nb_frames),
+            #          np.ones((nb_frames, )) * percentile_95)
+            # plt.savefig(f"{path}/{sub_folder}/c3d/{sub_folder}_{conditions[f'Sujet_{subject_number}'][velocity]}_processed6_H_h_5_to_59_percentile.png")
+            # plt.close()
 
             # --- Mean CoM acceleration --- #
+            print(f"Computing CoMddot of Sujet_{subject_number}")
             com_index = entry_names.index("CentreOfMass")
             com  = points[:3, com_index, :]
             com_acceleration = np.diff(np.diff(com, axis=1), axis=1) / dt**2
             norm_acceleration = np.linalg.norm(com_acceleration, axis=0)
             mean_com_acceleration[f'Sujet_{subject_number}'][velocity] = np.mean(norm_acceleration)
 
-            # --- Angles Lyapunov --- #
-            angles_index = [entry_names.index(name) for name in ["LHipAngles", "LKneeAngles", "LAnkleAngles", "RHipAngles", "RKneeAngles", "RAnkleAngles"]]
-
             # --- Angles RMSD --- #
+            print(f"Computing STD of Sujet_{subject_number}")
+            angles_index = [entry_names.index(name) for name in ["LHipAngles", "LKneeAngles", "LAnkleAngles", "RHipAngles", "RKneeAngles", "RAnkleAngles"]]
             nb_frames_interp = 100
             angles = np.zeros((18, nb_cycles, nb_frames_interp))
             x_to_interpolate_on = np.linspace(0, 1, num=nb_frames_interp)
@@ -187,25 +376,42 @@ def get_variability_data(data_path, conditions):
             std = np.std(angles, axis=1)
             std_angles[f'Sujet_{subject_number}'][velocity] = np.sum(np.mean(std, axis=1))
 
+            # --- EMG - Energy --- #
+            print(f"Computing EMG of Sujet_{subject_number}")
+            emg_index = [i_name for i_name, name in enumerate(analog_names) if not name.startswith("Channel")]
+            if len(emg_index) != 7:
+                print("icic")
+            emg = c3d["data"]["analogs"][0, emg_index, :]
+            mean_emg[f'Sujet_{subject_number}'][velocity] = np.sum(np.nanmean(np.abs(emg), axis=1))
 
-    return lyapunov_exponent, std_angles, h_5_to_59_percentile, mean_com_acceleration
+            # --- Angles Lyapunov --- #
+            print(f"Computing Lyapunov of Sujet_{subject_number}")
+            lyap = []
+            for i_angle, angle in enumerate(angles_index):
+                for i_dim in range(3):
+                    lyap += [compute_lyapunov(points[i_dim, angle, :])]
+            lyapunov_exponent[f'Sujet_{subject_number}'][velocity] = np.sum(np.array(lyap))
+
+    return lyapunov_exponent, std_angles, h_5_to_59_percentile, mean_com_acceleration, mean_emg
 
 
 def get_data(data_path):
 
-    cw, cw_opt, preferential_speed = get_energetic_data(data_path)
+    cw, cw_opt_velocity, cw_opt, preferential_speed = get_energetic_data(data_path)
 
     conditions = get_conditions(data_path, preferential_speed)
-    lyapunov_exponent, std_angles, h_5_to_59_percentile, mean_com_acceleration = get_variability_data(data_path, conditions)
+    lyapunov_exponent, std_angles, h_5_to_59_percentile, mean_com_acceleration, mean_emg = get_c3d_data(data_path, conditions)
 
     data = {
         "cw": cw,
+        "cw_opt_velocity": cw_opt_velocity,
         "cw_opt": cw_opt,
         "preferential_speed": preferential_speed,
         "lyapunov_exponent": lyapunov_exponent,
         "std_angles": std_angles,
         "h_5_to_59_percentile": h_5_to_59_percentile,
         "mean_com_acceleration": mean_com_acceleration,
+        "mean_emg": mean_emg,
     }
 
     return data
