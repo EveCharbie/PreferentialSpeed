@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
 from scipy.spatial import cKDTree
 from sklearn.metrics import mutual_info_score
+from pyomeca import Analogs
 
 
 def get_energetic_data(data_path):
@@ -38,6 +39,7 @@ def get_energetic_data(data_path):
 
 def get_conditions(data_path, preferential_speed):
     path = data_path + "/Kinematic"
+    energetic_files = os.listdir(data_path + "/Energetic")
     conditions = {}
     for sub_folder in os.listdir(path):
         try:
@@ -70,6 +72,16 @@ def get_conditions(data_path, preferential_speed):
                     conditions[f"Sujet_{subject_number}"]["preferential_speed"] = f"Cond{i + 1:04d}"
                     continue
                 conditions[f"Sujet_{subject_number}"][velocity] = f"Cond{i + 1:04d}"
+
+
+        # See FloEthv for condition order !!!!!!
+
+        # Deduct the 0.5 condition as it is the only one that was not specified
+        current_conditions = [conditions[f"Sujet_{subject_number}"][key] for key in conditions[f"Sujet_{subject_number}"].keys()]
+        available_files_this_subject = [file for file in energetic_files if file[4:6] == str(subject_number)]
+        missing_condition = [file[-12:-4] for file in available_files_this_subject if file[-12:-4] not in current_conditions]
+        conditions[f"Sujet_{subject_number}"]["0.50"] = missing_condition[0]
+
     return conditions
 
 
@@ -323,6 +335,29 @@ def compute_lyapunov(x):
     lyap, curve = rosenstein_lyapunov(x, m=m, tau=tau, max_t=50, min_dist=50, fs=100, plot=False)
     return lyap
 
+def get_interpolated_cop(cycle_start, platform1_cop, platform2_cop):
+    def interpolate(this_cycle):
+        y_data = this_cycle[~np.isnan(this_cycle)]
+        x_data = np.linspace(0, 1, num=y_data.shape[0])
+        interpolation_object = CubicSpline(x_data, y_data)
+        return interpolation_object(x_to_interpolate_on)
+
+    nb_cycles = cycle_start.shape[0]
+    nb_frames_interp = 100
+    cop = np.zeros((4, nb_cycles, nb_frames_interp))
+    x_to_interpolate_on = np.linspace(0, 1, num=nb_frames_interp)
+    for i_cycle in range(nb_cycles):
+        nb_frames = platform2_cop[:2, cycle_start[i_cycle]: cycle_start[i_cycle + 1]].shape[1]
+        for i_dim in range(2):
+            # left
+            this_cycle = platform1_cop[i_dim, cycle_start[i_cycle]: cycle_start[i_cycle + 1]]
+            cop[i_dim, i_cycle, :] = interpolate(this_cycle)
+
+            # right
+            this_cycle = platform2_cop[i_dim, cycle_start[i_cycle]: cycle_start[i_cycle + 1]]
+            cop[i_dim + 2, i_cycle, :] = interpolate(this_cycle)
+    return cop
+
 
 def get_c3d_data(data_path, conditions):
     lyapunov_exponent = {}
@@ -408,18 +443,61 @@ def get_c3d_data(data_path, conditions):
             # --- EMG - Energy --- #
             print(f"Computing EMG of Sujet_{subject_number}")
             emg_index = [i_name for i_name, name in enumerate(analog_names) if not name.startswith("Channel")]
+            emg_names = [name for name in analog_names if not name.startswith("Channel")]
             if len(emg_index) != 7:
-                print("icic")
-            emg = c3d["data"]["analogs"][0, emg_index, :]
-            mean_emg[f"Sujet_{subject_number}"][velocity] = np.sum(np.nanmean(np.abs(emg), axis=1))
+                raise RuntimeError(f"The trial {filepath} does not contain 7 EMG.")
+            # emg = c3d["data"]["analogs"][0, emg_index, :]
+            # emg_output = np.sum(np.nanmean(np.abs(emg), axis=1))
 
-            # --- Angles Lyapunov --- #
-            print(f"Computing Lyapunov of Sujet_{subject_number}")
-            lyap = []
-            for i_angle, angle in enumerate(angles_index):
-                for i_dim in range(3):
-                    lyap += [compute_lyapunov(points[i_dim, angle, :])]
-            lyapunov_exponent[f"Sujet_{subject_number}"][velocity] = np.sum(np.array(lyap))
+            emg = Analogs.from_c3d(filepath, suffix_delimiter=".", usecols=emg_names)
+            emg_processed = (emg.meca.interpolate_missing_data()
+                .meca.band_pass(order=2, cutoff=[10, 425])
+                .meca.center()
+                .meca.abs()
+                .meca.low_pass(order=4, cutoff=5, freq=emg.rate)
+                .meca.normalize())
+            emg_output = np.sum(np.nanmean(np.array(emg_processed), axis=1))
+
+            mean_emg[f"Sujet_{subject_number}"][velocity] = emg_output
+
+            # # --- Angles Lyapunov --- #
+            # print(f"Computing Lyapunov of Sujet_{subject_number}")
+            # lyap = []
+            # for i_angle, angle in enumerate(angles_index):
+            #     for i_dim in range(3):
+            #         lyap += [compute_lyapunov(points[i_dim, angle, :])]
+            # lyapunov_exponent[f"Sujet_{subject_number}"][velocity] = np.sum(np.array(lyap))
+
+    cop_variability = {}
+    path = data_path + "/Kinematic"
+    for sub_folder in os.listdir(path):
+        try:
+            subject_number = f"{int(sub_folder[-2:]):02d}"
+            cop_variability[f"Sujet_{subject_number}"] = {}
+        except:
+            continue
+        for velocity in ["0.50", "0.75", "1.00", "1.25"]:
+            try:
+                filepath = f"data/Energetic/{sub_folder}_K5_{conditions[f'Sujet_{subject_number}'][velocity]}.c3d"
+            except:
+                continue
+            c3d = ezc3d.c3d(filepath, extract_forceplat_data=True)
+            frame_rate = c3d["header"]["points"]["frame_rate"]
+            dt = 1 / frame_rate
+
+            platform2_force = c3d["data"]["platform"][1]["force"]
+            platform1_cop = c3d["data"]["platform"][0]["center_of_pressure"]
+            platform2_cop = c3d["data"]["platform"][1]["center_of_pressure"]
+
+            # Identify cycles from platform data (PF2 = right leg for 0° condition)
+            idx2_contact = platform2_force[2, :] > 10
+            cycle_start = np.where(np.diff(idx2_contact.astype(int)) == 1)[0]
+
+            cop_interpolated = get_interpolated_cop(cycle_start, platform1_cop, platform2_cop)
+            std = np.std(cop_interpolated, axis=1)
+            cop_variability[f"Sujet_{subject_number}"][velocity] = np.sum(np.mean(std, axis=1))
+
+
 
     return lyapunov_exponent, std_angles, h_5_to_59_percentile, mean_com_acceleration, mean_emg
 
